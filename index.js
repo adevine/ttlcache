@@ -12,6 +12,8 @@ const maybeReqPerfHooks = fallback => {
 }
 const timeProvider = maybeReqPerfHooks(Date)
 const now = () => timeProvider.now()
+const timeOrigin = timeProvider.timeOrigin || 0
+const epochTime = time => Math.floor(Number(time) + timeOrigin)
 const isPosInt = n => n && n === Math.floor(n) && n > 0 && isFinite(n)
 const isPosIntOrInf = n => n === Infinity || isPosInt(n)
 
@@ -51,12 +53,14 @@ class TTLCache {
 
   clear() {
     const entries =
-      this.dispose !== TTLCache.prototype.dispose ? [...this] : []
+      this.dispose !== TTLCache.prototype.dispose
+        ? [...this.entries(true)]
+        : []
     this.data.clear()
     this.expirationMap.clear()
     this.expirations = Object.create(null)
-    for (const [key, val] of entries) {
-      this.dispose(val, key, 'delete')
+    for (const [key, val, exp] of entries) {
+      this.dispose(val, key, 'delete', exp)
     }
   }
 
@@ -99,7 +103,8 @@ class TTLCache {
     if (!isPosIntOrInf(ttl)) {
       throw new TypeError('ttl must be positive integer or Infinity')
     }
-    if (this.expirationMap.has(key)) {
+    const oldExpirationTime = this.expirationMap.get(key)
+    if (oldExpirationTime !== undefined) {
       if (!noUpdateTTL) {
         this.setTTL(key, ttl)
       }
@@ -108,7 +113,12 @@ class TTLCache {
       if (oldValue !== val) {
         this.data.set(key, val)
         if (!noDisposeOnSet) {
-          this.dispose(oldValue, key, 'set')
+          this.dispose(
+            oldValue,
+            key,
+            'set',
+            epochTime(oldExpirationTime)
+          )
         }
       }
     } else {
@@ -161,7 +171,7 @@ class TTLCache {
       } else {
         this.expirations[current] = exp.filter(k => k !== key)
       }
-      this.dispose(value, key, 'delete')
+      this.dispose(value, key, 'delete', epochTime(current))
       return true
     }
     return false
@@ -175,7 +185,7 @@ class TTLCache {
           const val = this.data.get(key)
           this.data.delete(key)
           this.expirationMap.delete(key)
-          this.dispose(val, key, 'evict')
+          this.dispose(val, key, 'evict', epochTime(exp))
         }
         delete this.expirations[exp]
       } else {
@@ -184,7 +194,7 @@ class TTLCache {
           const val = this.data.get(key)
           this.data.delete(key)
           this.expirationMap.delete(key)
-          this.dispose(val, key, 'evict')
+          this.dispose(val, key, 'evict', epochTime(exp))
         }
       }
       return
@@ -205,16 +215,18 @@ class TTLCache {
         const val = this.data.get(key)
         this.data.delete(key)
         this.expirationMap.delete(key)
-        this.dispose(val, key, 'stale')
+        this.dispose(val, key, 'stale', epochTime(exp))
       }
       delete this.expirations[exp]
     }
   }
 
-  *entries() {
+  *entries(includeExpiration) {
     for (const exp in this.expirations) {
       for (const key of this.expirations[exp]) {
-        yield [key, this.data.get(key)]
+        yield includeExpiration
+          ? [key, this.data.get(key), epochTime(exp)]
+          : [key, this.data.get(key)]
       }
     }
   }

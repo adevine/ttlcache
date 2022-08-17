@@ -173,8 +173,8 @@ t.test('iterators', async t => {
 
 t.test('clear', async t => {
   const disposals: [number, number, string][] = []
-  const dispose = (...a: [number, number, string]) =>
-    disposals.push(a)
+  const dispose = (val: number, key: number, reason: string) =>
+    disposals.push([val, key, reason])
   const c = new TTL({ ttl: 10, dispose })
   for (let i = 0; i < 3; i++) {
     c.set(i, i * 2)

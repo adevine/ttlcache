@@ -89,12 +89,13 @@ declare class TTLCache<K, V> implements Iterable<[K, V]> {
 }
 
 declare namespace TTLCache {
-  type DisposeReason = 'evict' | 'set' | 'delete'
+  type DisposeReason = 'evict' | 'set' | 'delete' | 'stale'
 
   type Disposer<K, V> = (
     value: V,
     key: K,
-    reason: DisposeReason
+    reason: DisposeReason,
+    expirationTime: number,
   ) => void
 
   type TTLOptions = {
